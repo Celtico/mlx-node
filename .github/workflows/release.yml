@@ -1,0 +1,33 @@
+# On a version tag (v0.1.0…): builds the addon on an Apple Silicon runner against the pinned MLX, runs the
+# tests on a tiny random model, and attaches mlx_node-v<version>-darwin-arm64.tar.gz to the GitHub release,
+# which scripts/install.js downloads on `npm install`. Publishing to npm stays a manual step.
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  darwin-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: MLX and mlx-lm (only to build and to make the test references)
+        run: pip install "mlx==$(node -p "require('./package.json').mlx")" mlx-lm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+        env: { MLX_PYTHON: python }
+      - name: Tests on a tiny model
+        run: |
+          python test/make_tiny.py "$RUNNER_TEMP/tiny"
+          python test/make_lora_ref.py "$RUNNER_TEMP/tiny"
+          TINY_MODEL="$RUNNER_TEMP/tiny" npm test
+      - name: Package the addon
+        run: tar -czf "mlx_node-${GITHUB_REF_NAME}-darwin-arm64.tar.gz" -C build/Release mlx_node.node
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: mlx_node-${{ github.ref_name }}-darwin-arm64.tar.gz

@@ -55,4 +55,4 @@ Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`: it builds and tests
 
 ## Licence
 
-MIT. Parts are ported from [mlx-lm](https://github.com/ml-explore/mlx-lm) (MIT, Apple Inc.); see `LICENSE`.
+MIT. Parts are ported from [mlx-lm](https://github.com/ml-explore/mlx-lm) (MIT, Apple Inc.); see `NOTICE`.

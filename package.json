@@ -38,7 +38,8 @@
     "src/",
     "CMakeLists.txt",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "install": "node scripts/install.js",

@@ -1,0 +1,3 @@
+src/qwen35.cpp, src/lora.cpp and lora.js port parts of mlx-lm (models/qwen3_5.py,
+models/gated_delta.py, tuner/) to C++/JavaScript; the Gated DeltaNet Metal kernel
+is copied from mlx-lm. mlx-lm is Copyright © 2023-2025 Apple Inc., MIT License.

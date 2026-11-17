@@ -1,13 +1,10 @@
 # @celtico/mlx-node
 
-Run and fine-tune MLX language models from Node.js — no Python.
+The native MLX engine for Node.js — no Python.
 
-`@celtico/mlx-node` runs large language models with Apple's [MLX](https://github.com/ml-explore/mlx) directly from Node.js, through a native Node-API addon written in C++. There is no Python process in between.
+`@celtico/mlx-node` runs large language models with Apple's [MLX](https://github.com/ml-explore/mlx) directly from Node.js, through a native Node-API addon written in C++. It works with token ids: generation with streaming, greedy or sampled (temperature, top-p, top-k), a prompt cache like `mlx_lm`'s `LRUPromptCache`, LoRA adapters and LoRA training steps. Greedy output is token-for-token identical to `mlx_lm`.
 
-- **Generation** with streaming, greedy or sampled (temperature, top-p, top-k). Greedy output is token-for-token identical to `mlx_lm`.
-- **Prompt cache** like `mlx_lm`'s `LRUPromptCache`: the next message of a conversation only reads what is new.
-- **LoRA training** with the same parameters and adapter files as `mlx_lm lora`, which load in both.
-- **Tokenizer and chat templates** in JavaScript (`@huggingface/tokenizers`, `@huggingface/jinja`).
+**To chat with a model or train LoRA adapters, use [@celtico/node-mlx-lm](https://github.com/Celtico/node-mlx-lm)**, which adds the tokenizer, the chat templates and the training loop on top of this engine.
 
 Supports **Qwen 3.5** models in mlx-community format (for example MiMo V2.6 9B, 4-bit) on **Apple Silicon Macs**. Linux (CUDA) and Windows are planned.
 
@@ -22,35 +19,14 @@ On install, it downloads the prebuilt addon for its version from this repository
 ## Use
 
 ```js
-const { ChatModel } = require('@celtico/mlx-node/chat');
-
-const chat = new ChatModel('/path/to/mlx-community/model');
-for (const piece of chat.stream([{ role: 'user', content: 'Write a JavaScript function that adds two numbers.' }], { maxTokens: 200 })) {
-  process.stdout.write(piece);
-}
-chat.model.close(); // frees the model's memory
-```
-
-Lower level, with token ids:
-
-```js
 const { NativeModel } = require('@celtico/mlx-node');
 
-const model = new NativeModel('/path/to/model');
+const model = new NativeModel('/path/to/mlx-community/model');
 for (const id of model.generate(promptIds, { maxTokens: 100, temperature: 0 })) { /* … */ }
 console.log(model.lastPrompt); // { reused, total }: prompt tokens that came from the cache
-```
 
-LoRA adapters (`adapters.safetensors` + `adapter_config.json`, from `mlx_lm lora` or from here):
-
-```js
-model.loadAdapters('/path/to/adapters');
-
-const { trainLora } = require('@celtico/mlx-node/lora');
-await trainLora(chat, examples /* [{ messages: [...] }] */, {
-  adapterPath: '/tmp/adapters', iters: 100, learningRate: 1e-5, numLayers: 8,
-  maskPrompt: true, gradCheckpoint: true, onReport: (report) => console.log(report),
-});
+model.loadAdapters('/path/to/adapters'); // adapters.safetensors + adapter_config.json, as `mlx_lm lora` writes them
+model.close();                           // frees the model's memory
 ```
 
 Calls are synchronous and use the GPU: run the engine in its own process (a `child_process` or an Electron `utilityProcess`) so your UI never waits on it.

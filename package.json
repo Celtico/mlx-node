@@ -1,27 +1,49 @@
 {
   "name": "@celtico/mlx-node",
   "version": "0.1.0",
-  "description": "Run and fine-tune MLX language models from Node.js — no Python. Native Node-API engine for Apple Silicon: generation, prompt cache and LoRA training.",
+  "description": "Native MLX engine for Node.js — no Python. Node-API addon for Apple Silicon: Qwen 3.5 generation, prompt cache and LoRA training steps. For chat and training, see @celtico/node-mlx-lm.",
   "main": "index.js",
   "license": "MIT",
   "author": "Cel Ticó Petit",
-  "repository": { "type": "git", "url": "git+https://github.com/Celtico/mlx-node.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Celtico/mlx-node.git"
+  },
   "homepage": "https://github.com/Celtico/mlx-node#readme",
   "bugs": "https://github.com/Celtico/mlx-node/issues",
-  "keywords": ["mlx", "llm", "apple-silicon", "metal", "node-api", "lora", "qwen", "local-ai"],
+  "keywords": [
+    "mlx",
+    "llm",
+    "apple-silicon",
+    "metal",
+    "node-api",
+    "lora",
+    "qwen",
+    "local-ai"
+  ],
   "mlx": "0.32.4",
-  "os": ["darwin"],
-  "cpu": ["arm64"],
-  "engines": { "node": ">=20" },
-  "files": ["index.js", "chat.js", "lora.js", "scripts/install.js", "scripts/build.js", "src/", "CMakeLists.txt", "README.md", "LICENSE"],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "index.js",
+    "scripts/install.js",
+    "scripts/build.js",
+    "src/",
+    "CMakeLists.txt",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "install": "node scripts/install.js",
     "build": "node scripts/build.js",
     "test": "node --test test/*.test.js"
-  },
-  "dependencies": {
-    "@huggingface/jinja": "0.5.13",
-    "@huggingface/tokenizers": "0.2.0"
   },
   "devDependencies": {
     "cmake-js": "8.0.0",

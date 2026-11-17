@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.1.2
+## 0.1.3
+
+- A training step computes the gradients before it changes the optimizer state or the weights: if macOS aborts the GPU work («Impacting Interactivity», while the screen needs the GPU), the same step can run again (node-mlx-lm retries it).
 
 - LoRA training of Qwen 3.5 models in much less memory:
   - `trainStep(..., { deltaChunk: 64 })` computes the Gated DeltaNet recurrence in chunkwise form (as flash-linear-attention), keeping one state per chunk instead of one per token. Gradients match the step-by-step loop to ~5e-6 in float32.
@@ -10,7 +12,7 @@
 
 ## 0.1.1
 
-- Tagged but not released: the new tests were too strict for the CI runner's GPU.
+- 0.1.1 and 0.1.2 were tagged but not released: the new tests were too strict for the CI runner's GPU.
 
 ## 0.1.0
 

@@ -73,8 +73,9 @@ test('training steps with the loss in chunks match the unchunked ones', { skip }
   const whole = run(0);
   const chunked = run(16);
   assert.ok(ref.steps.every((s) => s.tokens.length - 1 > 16), 'the reference sequences are longer than a chunk');
-  // Identical on an M2 Pro; another GPU may pick other matmul kernels for the chunks, so a little slack.
-  chunked.losses.forEach((loss, i) => assert.ok(Math.abs(loss - whole.losses[i]) < 1e-3, `loss ${loss} vs ${whole.losses[i]}`));
+  // Identical on an M2 Pro. The tiny model's loss is bfloat16 (steps of 1/32 near 6.6), and another GPU may pick
+  // other matmul kernels for the chunks: on the CI runner one loss lands a bfloat16 step away (6.648 vs 6.664).
+  chunked.losses.forEach((loss, i) => assert.ok(Math.abs(loss - whole.losses[i]) < 0.04, `loss ${loss} vs ${whole.losses[i]}`));
   let worst = 0;
   for (const k of Object.keys(whole.adapters)) worst = Math.max(worst, maxDiff(whole.adapters[k].values, chunked.adapters[k].values));
   console.log(`losses ${chunked.losses.map((l) => l.toFixed(4)).join(', ')}; max adapter diff chunked vs whole: ${worst}`);

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.3
+## 0.1.4
 
 - A training step computes the gradients before it changes the optimizer state or the weights: if macOS aborts the GPU work («Impacting Interactivity», while the screen needs the GPU), the same step can run again (node-mlx-lm retries it).
 
@@ -12,7 +12,7 @@
 
 ## 0.1.1
 
-- 0.1.1 and 0.1.2 were tagged but not released: the new tests were too strict for the CI runner's GPU.
+- 0.1.1 to 0.1.3 were tagged but not released: the new tests were too strict for the CI runner's GPU, and then no macos-15 runner picked the job (the release now builds on macos-26).
 
 ## 0.1.0
 

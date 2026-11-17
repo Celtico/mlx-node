@@ -1,7 +1,7 @@
 // Runs on `npm install`: puts in build/Release/ what the engine needs, without compiling anything and without
 // Python:
 //   1. mlx_node.node, the prebuilt addon for this version, from the GitHub release (built by CI);
-//   2. libmlx.dylib and mlx.metallib, from the official mlx-metal wheel on PyPI, at the exact MLX version the
+//   2. libmlx.dylib (with the libraries it loads, such as libjaccl.dylib) and mlx.metallib, from the official mlx-metal wheel on PyPI, at the exact MLX version the
 //      addon was built against (package.json «mlx»), for the newest macOS this Mac supports.
 // Already there (a local build: npm run build) → nothing to do. Not an Apple Silicon Mac, or offline → a note
 // and a normal exit, so installing the package never fails because of it.
@@ -13,7 +13,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const pkg = require(path.join(root, 'package.json'));
 const out = path.join(root, 'build', 'Release');
-const needed = ['mlx_node.node', 'libmlx.dylib', 'mlx.metallib'];
+const needed = ['mlx_node.node', 'libmlx.dylib', 'libjaccl.dylib', 'mlx.metallib'];
 const have = (name) => fs.existsSync(path.join(out, name));
 
 /** The macOS major version from the Darwin one (Darwin 23 → 14, 24 → 15, 25 → 26). */
@@ -55,10 +55,10 @@ async function main() {
       await download(`https://github.com/Celtico/mlx-node/releases/download/v${pkg.version}/mlx_node-v${pkg.version}-darwin-arm64.tar.gz`, archive);
       execFileSync('tar', ['-xzf', archive, '-C', out]);
     }
-    if (!have('libmlx.dylib') || !have('mlx.metallib')) {
+    if (!['libmlx.dylib', 'libjaccl.dylib', 'mlx.metallib'].every(have)) {
       const wheel = path.join(temp, 'mlx-metal.whl');
       await download(await mlxWheel(pkg.mlx), wheel);
-      execFileSync('unzip', ['-o', '-j', '-q', wheel, 'mlx/lib/libmlx.dylib', 'mlx/lib/mlx.metallib', '-d', out]);
+      execFileSync('unzip', ['-o', '-j', '-q', wheel, 'mlx/lib/*.dylib', 'mlx/lib/mlx.metallib', '-d', out]);
     }
     console.log(`@celtico/mlx-node: ready (MLX ${pkg.mlx}).`);
   } catch (error) {

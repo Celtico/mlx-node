@@ -19,14 +19,15 @@ set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_JS_INC} ${NODE_ADDON_API_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE mlx ${CMAKE_JS_LIB})
 
-# libmlx (and mlx.metallib on macOS) are copied next to the .node file, so the
-# addon finds them without Python or a fixed path.
+# MLX's libraries (libmlx and the ones it loads, such as libjaccl) and mlx.metallib on macOS are copied
+# next to the .node file, which looks for them only there: no Python or fixed path, here or on another Mac.
 if(APPLE)
-  set_target_properties(${PROJECT_NAME} PROPERTIES BUILD_RPATH "@loader_path")
+  set(MLX_RPATH "@loader_path")
 else()
-  set_target_properties(${PROJECT_NAME} PROPERTIES BUILD_RPATH "$ORIGIN")
+  set(MLX_RPATH "$ORIGIN")
 endif()
-file(GLOB MLX_RUNTIME_FILES "${MLX_LIBRARY_DIRS}/libmlx*" "${MLX_LIBRARY_DIRS}/*.metallib")
+set_target_properties(${PROJECT_NAME} PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "${MLX_RPATH}")
+file(GLOB MLX_RUNTIME_FILES "${MLX_LIBRARY_DIRS}/*${CMAKE_SHARED_LIBRARY_SUFFIX}*" "${MLX_LIBRARY_DIRS}/*.metallib")
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MLX_RUNTIME_FILES} $<TARGET_FILE_DIR:${PROJECT_NAME}>)
 

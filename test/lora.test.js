@@ -79,3 +79,46 @@ test('training steps with the loss in chunks match the unchunked ones', { skip }
   console.log(`losses ${chunked.losses.map((l) => l.toFixed(4)).join(', ')}; max adapter diff chunked vs whole: ${worst}`);
   assert.ok(worst < 1e-6, `adapters differ by ${worst}`);
 });
+
+// The Gated DeltaNet recurrence in chunkwise form (deltaChunk, for long examples) computes the same
+// gradients as mlx-lm's step-by-step loop. With bfloat16 activations (the tiny model as made) the rounding
+// differs by ~1% (relative), as it does for the checkpointed segments; with the same model in float32
+// (TINY_MODEL_F32: its weights cast to float32) the two agree to ~5e-6, so the difference is rounding.
+const gradientDiff = (modelDir, segment, chunk) => {
+  const ref = JSON.parse(fs.readFileSync(path.join(modelDir, 'reference_lora.json'), 'utf8'));
+  const s = ref.steps[0];
+  const grads = (seg, ch) => {
+    const e = new NativeModel(modelDir).engine;
+    e.loraLoad(path.join(modelDir, 'adapters_init.safetensors'), 20);
+    const file = path.join(os.tmpdir(), `grads-${process.pid}-${seg}-${ch}.safetensors`);
+    e.loraGradients(Int32Array.from(s.tokens), s.offset, s.length, file, true, 0, seg, ch);
+    const g = readSafetensors(file);
+    fs.rmSync(file);
+    return g;
+  };
+  const base = grads(0, 0);
+  const other = grads(segment, chunk);
+  grads(0, 0);  // the options are process-wide: back to the defaults
+  let num = 0;
+  let den = 0;
+  for (const k of Object.keys(base)) {
+    const a = base[k].values;
+    const b = other[k].values;
+    for (let i = 0; i < a.length; i++) { num += (a[i] - b[i]) ** 2; den += a[i] ** 2; }
+  }
+  return Math.sqrt(num / den);
+};
+
+for (const deltaChunk of [8, 16, 64]) {
+  test(`gradients with the DeltaNet in chunks of ${deltaChunk} match the step-by-step loop`, { skip }, () => {
+    const diff = gradientDiff(dir, 0, deltaChunk);
+    console.log(`relative gradient difference (bfloat16): ${diff.toExponential(2)}`);
+    assert.ok(diff < 2e-2, `gradients differ by ${diff}`);
+    const f32 = process.env.TINY_MODEL_F32;
+    if (f32 && fs.existsSync(path.join(f32, 'reference_lora.json'))) {
+      const exact = gradientDiff(f32, 0, deltaChunk);
+      console.log(`relative gradient difference (float32): ${exact.toExponential(2)}`);
+      assert.ok(exact < 1e-4, `float32 gradients differ by ${exact}`);
+    }
+  });
+}

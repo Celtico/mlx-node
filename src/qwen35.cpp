@@ -291,9 +291,106 @@ std::pair<array, array> gated_delta_ops(array q, array k, const array& v,
   return {mx::concatenate(parts, 1), state};
 }
 
+// Positions per chunk of the chunkwise form below (training); 0: the step-by-step loop.
+int kDeltaChunk = 0;
+
+// The same recurrence in chunkwise form (Gated DeltaNet, Yang et al. 2024; the reference
+// chunk_gated_delta_rule of flash-linear-attention): inside a chunk of C positions everything is a
+// few [C, C] / [C, D] matmuls, and only the state between chunks is carried. For autodiff this keeps
+// T / C states instead of T, and C-wide matmuls instead of T tiny steps, so a 4,096-token example fits.
+// Mathematically the same as the loop; the rounding differs (fp32 throughout).
+// Inputs as gated_delta_ops, with the log of the decay (lg = log g, <= 0) instead of g.
+std::pair<array, array> gated_delta_chunked(array q, array k, array v, array lg, array beta,
+                                            const array& state, int C) {
+  int B = q.shape(0), T = q.shape(1), Hk = q.shape(2), Hv = v.shape(2);
+  int Dk = q.shape(3), Dv = v.shape(3);
+  auto in_dtype = q.dtype();
+  if (Hv / Hk > 1) {
+    q = mx::repeat(q, Hv / Hk, -2);
+    k = mx::repeat(k, Hv / Hk, -2);
+  }
+  auto f32 = [](const array& x) { return mx::astype(x, mx::float32); };
+  // [B, T, H, D] -> [B, H, T, D]; [B, T, H] -> [B, H, T]
+  q = mx::transpose(f32(q), {0, 2, 1, 3});
+  k = mx::transpose(f32(k), {0, 2, 1, 3});
+  v = mx::transpose(f32(v), {0, 2, 1, 3});
+  lg = mx::transpose(f32(lg), {0, 2, 1});
+  beta = mx::transpose(f32(beta), {0, 2, 1});
+  // Pad to whole chunks: k = v = beta = 0 and no decay leave the state as it is.
+  int N = (T + C - 1) / C, P = N * C - T;
+  if (P > 0) {
+    auto pad4 = [&](const array& x) { return mx::pad(x, {{0, 0}, {0, 0}, {0, P}, {0, 0}}); };
+    auto pad3 = [&](const array& x) { return mx::pad(x, {{0, 0}, {0, 0}, {0, P}}); };
+    q = pad4(q); k = pad4(k); v = pad4(v); lg = pad3(lg); beta = pad3(beta);
+  }
+  q = mx::reshape(q, {B, Hv, N, C, Dk});
+  k = mx::reshape(k, {B, Hv, N, C, Dk});
+  v = mx::reshape(v, {B, Hv, N, C, Dv});
+  lg = mx::reshape(lg, {B, Hv, N, C});
+  beta = mx::reshape(beta, {B, Hv, N, C});
+
+  auto gc = mx::cumsum(lg, -1);                                           // [B, H, N, C]
+  auto idx = mx::arange(C);
+  auto lower = mx::greater_equal(mx::expand_dims(idx, 1), mx::expand_dims(idx, 0));  // i >= j
+  auto strict = mx::greater(mx::expand_dims(idx, 1), mx::expand_dims(idx, 0));      // i > j
+  auto diff = mx::subtract(mx::expand_dims(gc, -1), mx::expand_dims(gc, -2));       // gc_i - gc_j
+  auto decay = mx::where(lower, mx::exp(mx::where(lower, diff, mx::zeros_like(diff))), mx::zeros_like(diff));
+
+  auto kt = mx::swapaxes(k, -1, -2);
+  auto kb = mx::multiply(k, mx::expand_dims(beta, -1));
+  auto vb = mx::multiply(v, mx::expand_dims(beta, -1));
+  // Tm = (I - A)^-1 with A = -(beta k k^T * decay) strictly lower, by forward substitution
+  // (row i = e_i + sum_j<i A_ij row j), as flash-linear-attention does. (The power series
+  // (I + A)(I + A^2)(I + A^4)... is the same in exact arithmetic but overflows in fp32 at C = 64.)
+  auto A = mx::where(strict, mx::negative(mx::multiply(mx::matmul(kb, kt), decay)), mx::zeros_like(decay));
+  auto eye = mx::eye(C, C, 0, mx::float32);
+  auto row = [&](const array& x, int i) {  // [.., C, C] -> [.., 1, C]
+    mx::Shape start(x.ndim(), 0), stop = x.shape();
+    start[x.ndim() - 2] = i; stop[x.ndim() - 2] = i + 1;
+    return mx::slice(x, start, stop);
+  };
+  mx::Shape row_shape = A.shape();
+  row_shape[A.ndim() - 2] = 1;
+  std::vector<array> rows{mx::broadcast_to(row(eye, 0), row_shape)};
+  for (int i = 1; i < C; ++i) {
+    auto a = row(A, i);
+    mx::Shape start(a.ndim(), 0), stop = a.shape();
+    stop[a.ndim() - 1] = i;
+    auto a_prev = mx::slice(a, start, stop);                                   // [.., 1, i]
+    rows.push_back(mx::add(row(eye, i), mx::matmul(a_prev, mx::concatenate(rows, -2))));
+  }
+  auto Tm = mx::concatenate(rows, -2);
+  auto u = mx::matmul(Tm, vb);                                                       // [.., C, Dv]
+  auto w = mx::matmul(Tm, mx::multiply(kb, mx::expand_dims(mx::exp(gc), -1)));      // [.., C, Dk]
+  auto qk = mx::multiply(mx::matmul(q, kt), decay);                                  // [.., C, C]
+  auto qg = mx::multiply(q, mx::expand_dims(mx::exp(gc), -1));
+  auto glast = mx::slice(gc, {0, 0, 0, C - 1}, {B, Hv, N, C});                       // [B, H, N, 1]
+  auto kg = mx::multiply(k, mx::expand_dims(mx::exp(mx::subtract(glast, gc)), -1));
+  auto kgt = mx::swapaxes(kg, -1, -2);
+
+  auto chunk = [&](const array& x, int n) {
+    mx::Shape start(x.ndim(), 0), stop = x.shape();
+    start[2] = n; stop[2] = n + 1;
+    return mx::squeeze(mx::slice(x, start, stop), 2);
+  };
+  auto M = mx::swapaxes(f32(state), -1, -2);  // [B, H, Dk, Dv]
+  std::vector<array> outs;
+  for (int n = 0; n < N; ++n) {
+    auto v_new = mx::subtract(chunk(u, n), mx::matmul(chunk(w, n), M));
+    outs.push_back(mx::add(mx::matmul(chunk(qg, n), M), mx::matmul(chunk(qk, n), v_new)));
+    M = mx::add(mx::multiply(M, mx::expand_dims(mx::exp(chunk(glast, n)), -1)),
+                mx::matmul(chunk(kgt, n), v_new));
+  }
+  auto y = mx::reshape(mx::stack(outs, 2), {B, Hv, N * C, Dv});
+  if (P > 0) y = mx::slice(y, {0, 0, 0, 0}, {B, Hv, T, Dv});
+  y = mx::astype(mx::transpose(y, {0, 2, 1, 3}), in_dtype);
+  return {y, mx::swapaxes(M, -1, -2)};
+}
+
 }  // namespace
 
 void set_delta_segment(int steps) { kDeltaSegment = steps; }
+void set_delta_chunk(int positions) { kDeltaChunk = positions; }
 
 std::pair<array, array> gated_delta_update(
     const array& q, const array& k, const array& v, const array& a,
@@ -305,6 +402,13 @@ std::pair<array, array> gated_delta_update(
   array state = state_in ? *state_in : mx::zeros({B, Hv, Dv, Dk}, mx::float32);
   if (allow_kernel && use_metal_kernel() && Dk == 128 && Dv % 8 == 0) {
     return gated_delta_kernel(q, k, v, g, beta, state);
+  }
+  if (!allow_kernel && kDeltaChunk > 0 && q.shape(1) > 1) {
+    // log g computed directly (g itself can underflow to 0 for strong decay).
+    auto x = mx::add(a, dt_bias);
+    auto softplus = mx::logaddexp(x, scalar(0.0f, x));
+    auto lg = mx::negative(mx::multiply(mx::exp(mx::astype(A_log, mx::float32)), softplus));
+    return gated_delta_chunked(q, k, v, lg, beta, state, kDeltaChunk);
   }
   return gated_delta_ops(q, k, v, g, beta, state);
 }

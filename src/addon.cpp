@@ -431,6 +431,7 @@ class Engine : public Napi::ObjectWrap<Engine> {
         ckpt = o.Get("gradCheckpoint").ToBoolean();
         if (o.Has("lossChunk")) lora().set_loss_chunk(o.Get("lossChunk").As<Napi::Number>().Int32Value());
         if (o.Has("deltaSegment")) set_delta_segment(o.Get("deltaSegment").As<Napi::Number>().Int32Value());
+        if (o.Has("deltaChunk")) set_delta_chunk(o.Get("deltaChunk").As<Napi::Number>().Int32Value());
       }
       weights_changed();
       auto r = lora().step(to_tokens(info[0]), info[1].As<Napi::Number>().Int32Value(),
@@ -455,6 +456,7 @@ class Engine : public Napi::ObjectWrap<Engine> {
       live_ok_ = false;
       if (info.Length() > 5 && info[5].IsNumber()) lora().set_loss_chunk(info[5].As<Napi::Number>().Int32Value());
       if (info.Length() > 6 && info[6].IsNumber()) set_delta_segment(info[6].As<Napi::Number>().Int32Value());
+      if (info.Length() > 7 && info[7].IsNumber()) set_delta_chunk(info[7].As<Napi::Number>().Int32Value());
       auto g = lora().gradients(to_tokens(info[0]), info[1].As<Napi::Number>().Int32Value(),
                                 info[2].As<Napi::Number>().Int32Value(), info[4].ToBoolean());
       mx::save_safetensors(info[3].As<Napi::String>().Utf8Value(), g);

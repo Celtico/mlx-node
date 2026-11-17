@@ -138,6 +138,7 @@ class Qwen35 {
 // Gated delta rule recurrence (Metal kernel on GPU, ops loop elsewhere).
 // Steps per checkpointed segment of the Gated DeltaNet recurrence in long sequences (training); 0: none.
 void set_delta_segment(int steps);
+void set_delta_chunk(int positions);
 
 std::pair<mx::array, mx::array> gated_delta_update(
     const mx::array& q, const mx::array& k, const mx::array& v,

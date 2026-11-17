@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mlx-node — the native MLX engine for Node.js</title>
+<meta name="description" content="Run LLMs with Apple's MLX directly from Node.js. A native Node-API engine in C++ for Apple Silicon: generation, prompt cache and LoRA training steps. Prebuilt, no Python.">
+<meta property="og:title" content="mlx-node — the native MLX engine for Node.js">
+<meta property="og:description" content="Generation, prompt cache and LoRA training steps on Apple Silicon. Prebuilt, no Python.">
+<meta property="og:image" content="https://celtico.github.io/mlx-node/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0d12; --panel: #12151c; --line: rgba(255,255,255,.09); --text: #f4f4f5; --muted: #a1a1aa; --dim: #71717a;
+    --accent: #4ade80; --accent-soft: rgba(34,197,94,.1); --kw: #c084fc; --fn: #60a5fa; --num: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: radial-gradient(900px 600px at 85% -10%, rgba(34,197,94,.16), transparent 70%) no-repeat, var(--bg); color: var(--text); font: 16px/1.6 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  code, pre, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  header.top { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
+  .brand { font: 600 17px 'JetBrains Mono', monospace; text-decoration: none; }
+  .brand span { color: var(--accent); }
+  nav { display: flex; gap: 22px; font-size: 15px; color: var(--muted); }
+  nav a { text-decoration: none; } nav a:hover { color: var(--text); }
+  .hero { position: relative; padding: 72px 0 64px; overflow: hidden; }
+    .pill { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: #86efac; border: 1px solid rgba(134,239,172,.3); background: var(--accent-soft); padding: 6px 13px; border-radius: 999px; }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  h1 { font-size: clamp(38px, 6vw, 64px); line-height: 1.04; font-weight: 800; letter-spacing: -.035em; margin: 22px 0 18px; max-width: 820px; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lead { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 680px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; align-items: center; }
+  .install { min-width: 0; display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px 11px 16px; font: 15px 'JetBrains Mono', monospace; max-width: 100%; }
+  .install .p { color: var(--dim); }
+  .install code { min-width: 0; overflow-x: auto; white-space: nowrap; }
+  button.copy { background: rgba(255,255,255,.07); border: 1px solid var(--line); color: var(--muted); border-radius: 7px; padding: 5px 10px; font: 500 13px Inter, sans-serif; cursor: pointer; }
+  button.copy:hover { color: var(--text); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; font-size: 15px; padding: 11px 18px; border-radius: 10px; border: 1px solid var(--line); }
+  .btn.primary { background: var(--accent); color: #052e16; border-color: transparent; }
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(26px, 3.4vw, 34px); letter-spacing: -.02em; line-height: 1.15; margin-bottom: 10px; }
+  .sub { color: var(--muted); max-width: 680px; margin-bottom: 30px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h3 { font-size: 17px; margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 15px; }
+  .card .k { font: 600 13px 'JetBrains Mono', monospace; color: var(--accent); margin-bottom: 10px; display: block; }
+  .code { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .code .bar { display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  .code .bar i { width: 10px; height: 10px; border-radius: 50%; background: #3f3f46; }
+  .code .bar span { margin-left: 8px; font: 500 13px 'JetBrains Mono', monospace; color: var(--dim); }
+  .code pre { padding: 18px 20px; font-size: 13px; line-height: 1.7; overflow-x: auto; color: #d4d4d8; }
+  .kw { color: var(--kw); } .fn { color: var(--fn); } .st { color: var(--accent); } .cm { color: var(--dim); } .nu { color: var(--num); }
+  .two { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 28px; align-items: start; }
+  ol.steps { list-style: none; counter-reset: s; display: grid; gap: 14px; }
+  ol.steps li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr; gap: 12px; color: var(--muted); }
+  ol.steps li::before { content: counter(s); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font: 600 14px 'JetBrains Mono', monospace; border: 1px solid rgba(134,239,172,.25); }
+  ol.steps b { color: var(--text); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  td { padding: 12px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { color: var(--dim); width: 38%; padding-right: 16px; }
+  .ok { color: var(--accent); }
+  .stack { display: grid; gap: 8px; max-width: 520px; }
+  .layer { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 13px 16px; display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
+  .layer b { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+  .layer span { color: var(--muted); text-align: right; }
+  .layer.me { border-color: rgba(74,222,128,.5); background: var(--accent-soft); }
+  .arrow { text-align: center; color: var(--dim); font-size: 13px; line-height: 1; }
+  footer { border-top: 1px solid var(--line); padding: 30px 0 48px; color: var(--dim); font-size: 14px; display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; }
+  @media (max-width: 760px) { .two { grid-template-columns: minmax(0,1fr); } nav .hide { display: none; } .actions > * { max-width: 100%; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#">mlx<span>-</span>node</a>
+    <nav><a class="hide" href="#features">Features</a><a class="hide" href="#install">Install</a><a href="https://github.com/Celtico/mlx-node">GitHub</a><a href="https://www.npmjs.com/package/@celticopetit/mlx-node">npm</a></nav>
+  </header>
+
+  <div class="hero">
+    <span class="pill"><i></i>v0.1.0 · MIT · Apple Silicon</span>
+    <h1>The native MLX engine for <em>Node.js</em>.</h1>
+    <p class="lead">Run large language models with Apple's MLX straight from Node.js: a Node-API addon written in C++, with generation, prompt cache and LoRA training steps on the GPU. No Python process, nothing to compile.</p>
+    <div class="actions">
+      <div class="install"><span class="p">$</span><code id="cmd">npm install @celticopetit/mlx-node</code><button class="copy" data-copy="npm install @celticopetit/mlx-node">Copy</button></div>
+      <a class="btn" href="https://github.com/Celtico/mlx-node">View on GitHub →</a>
+    </div>
+  </div>
+
+  <section id="features">
+    <h2>What's inside</h2>
+    <p class="sub">A small, focused engine that works with token ids. For chat templates and the training loop, use <a href="https://celtico.github.io/node-mlx-lm/">node-mlx-lm</a> on top of it.</p>
+    <div class="grid">
+      <div class="card"><span class="k">generate()</span><h3>Generation</h3><p>Streaming tokens, greedy or sampled with temperature, top-p and top-k. Greedy output is token-for-token identical to mlx_lm.</p></div>
+      <div class="card"><span class="k">prompt cache</span><h3>Prompt cache</h3><p>Like mlx_lm's LRUPromptCache: the next turn of a conversation only processes what is new.</p></div>
+      <div class="card"><span class="k">loadAdapters()</span><h3>LoRA adapters</h3><p>Loads adapters.safetensors from mlx_lm lora, or from training here. Swap them without reloading the model.</p></div>
+      <div class="card"><span class="k">trainStep()</span><h3>LoRA training steps</h3><p>Forward, backward and Adam on the GPU, with optional gradient checkpointing. Losses match mlx_lm.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="two">
+      <div>
+        <h2>Small API, in plain Node.js</h2>
+        <p class="sub">Load a model folder in mlx-community format and generate. Calls are synchronous and use the GPU, so run the engine in its own process (a child process or an Electron utilityProcess) and your UI never waits on it.</p>
+        <div class="stack">
+          <div class="layer"><b>your app</b><span>chat, agents, tools</span></div>
+          <div class="arrow">↓</div>
+          <div class="layer"><b>node-mlx-lm</b><span>tokenizer, templates, trainLora</span></div>
+          <div class="arrow">↓</div>
+          <div class="layer me"><b>mlx-node</b><span>this engine (C++, N-API)</span></div>
+          <div class="arrow">↓</div>
+          <div class="layer"><b>MLX + Metal</b><span>Apple Silicon GPU</span></div>
+        </div>
+      </div>
+      <div class="code">
+        <div class="bar"><i></i><i></i><i></i><span>engine.js</span></div>
+<pre><span class="kw">const</span> { NativeModel } = <span class="fn">require</span>(<span class="st">'@celticopetit/mlx-node'</span>);
+
+<span class="kw">const</span> model = <span class="kw">new</span> <span class="fn">NativeModel</span>(<span class="st">'./MiMo-V2.6-9B-4bit'</span>);
+
+<span class="kw">for</span> (<span class="kw">const</span> id <span class="kw">of</span> model.<span class="fn">generate</span>(promptIds, {
+  maxTokens: <span class="nu">200</span>, temperature: <span class="nu">0</span>,
+})) {
+  <span class="cm">// one token id at a time</span>
+}
+
+console.<span class="fn">log</span>(model.lastPrompt);
+<span class="cm">// { reused: 812, total: 840 } from the cache</span>
+
+model.<span class="fn">loadAdapters</span>(<span class="st">'./adapters'</span>);
+model.<span class="fn">close</span>(); <span class="cm">// frees the GPU memory</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="two">
+      <div>
+        <h2>npm install, nothing to compile</h2>
+        <p class="sub">No Xcode, no cmake, no Python on the machine that installs it.</p>
+        <ol class="steps">
+          <li><div><b>Prebuilt addon.</b> The engine for this exact version comes from the GitHub release, built and tested by CI on an Apple Silicon runner.</div></li>
+          <li><div><b>Official MLX.</b> libmlx and mlx.metallib come from Apple's mlx-metal package on PyPI, at the exact MLX version the addon was built with, for your macOS.</div></li>
+          <li><div><b>Next to the addon.</b> Everything lands in the package's own folder and is only looked for there, so it also works inside a packaged Electron app.</div></li>
+        </ol>
+      </div>
+      <div>
+        <h2>Requirements</h2>
+        <table>
+          <tr><td>Hardware</td><td>Apple Silicon Mac (M1 and later)</td></tr>
+          <tr><td>System</td><td>macOS 14 or later</td></tr>
+          <tr><td>Node.js</td><td>20 or later</td></tr>
+          <tr><td>Models</td><td>Qwen 3.5 text models in mlx-community format, e.g. MiMo V2.6 9B 4-bit</td></tr>
+          <tr><td>MLX</td><td>0.32.4, pinned</td></tr>
+          <tr><td>Linux, Windows</td><td>Planned</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Checked against mlx_lm</h2>
+    <p class="sub">Every release runs the tests on a tiny random model and compares with the Python reference.</p>
+    <div class="grid">
+      <div class="card"><h3><span class="ok">✓</span> Logits</h3><p>Prefill and decoding steps match mlx_lm.</p></div>
+      <div class="card"><h3><span class="ok">✓</span> Tokens</h3><p>Greedy output identical, also on a 700-token prompt.</p></div>
+      <div class="card"><h3><span class="ok">✓</span> Cache</h3><p>Same tokens with and without the prompt cache, and the same evictions.</p></div>
+      <div class="card"><h3><span class="ok">✓</span> LoRA</h3><p>Training losses and adapters match mlx_lm lora.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>mlx-node · MIT · by Cel Ticó Petit · Parts ported from mlx-lm (MIT, Apple Inc.)</span>
+    <span><a href="https://github.com/Celtico/mlx-node">GitHub</a> · <a href="https://www.npmjs.com/package/@celticopetit/mlx-node">npm</a> · <a href="https://celtico.github.io/node-mlx-lm/">node-mlx-lm</a></span>
+  </footer>
+</div>
+<script>
+  document.querySelectorAll('button.copy').forEach((b) => b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'Copied'; } catch { b.textContent = 'Select it'; }
+    setTimeout(() => { b.textContent = 'Copy'; }, 1500);
+  }));
+</script>
+</body>
+</html>

@@ -1,5 +1,9 @@
 # @celticopetit/mlx-node
 
+![mlx-node](docs/cover.png)
+
+**Website:** https://celtico.github.io/mlx-node/
+
 The native MLX engine for Node.js — no Python.
 
 `@celticopetit/mlx-node` runs large language models with Apple's [MLX](https://github.com/ml-explore/mlx) directly from Node.js, through a native Node-API addon written in C++. It works with token ids: generation with streaming, greedy or sampled (temperature, top-p, top-k), a prompt cache like `mlx_lm`'s `LRUPromptCache`, LoRA adapters and LoRA training steps. Greedy output is token-for-token identical to `mlx_lm`.

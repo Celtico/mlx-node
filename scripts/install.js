@@ -44,7 +44,7 @@ async function mlxWheel(version) {
 async function main() {
   if (needed.every(have)) return;
   if (process.platform !== 'darwin' || process.arch !== 'arm64') {
-    console.warn('@celtico/mlx-node: for now it runs on Apple Silicon Macs only (Linux and Windows are planned).');
+    console.warn('@celticopetit/mlx-node: for now it runs on Apple Silicon Macs only (Linux and Windows are planned).');
     return;
   }
   fs.mkdirSync(out, { recursive: true });
@@ -60,9 +60,9 @@ async function main() {
       await download(await mlxWheel(pkg.mlx), wheel);
       execFileSync('unzip', ['-o', '-j', '-q', wheel, 'mlx/lib/*.dylib', 'mlx/lib/mlx.metallib', '-d', out]);
     }
-    console.log(`@celtico/mlx-node: ready (MLX ${pkg.mlx}).`);
+    console.log(`@celticopetit/mlx-node: ready (MLX ${pkg.mlx}).`);
   } catch (error) {
-    console.warn(`@celtico/mlx-node: could not set up the engine (${error.message}).`);
+    console.warn(`@celticopetit/mlx-node: could not set up the engine (${error.message}).`);
     console.warn(`Build it here instead: pip install mlx==${pkg.mlx}, then npm run build (needs Xcode and cmake).`);
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });

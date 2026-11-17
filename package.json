@@ -1,7 +1,7 @@
 {
-  "name": "@celtico/mlx-node",
+  "name": "@celticopetit/mlx-node",
   "version": "0.1.0",
-  "description": "Native MLX engine for Node.js — no Python. Node-API addon for Apple Silicon: Qwen 3.5 generation, prompt cache and LoRA training steps. For chat and training, see @celtico/node-mlx-lm.",
+  "description": "Native MLX engine for Node.js — no Python. Node-API addon for Apple Silicon: Qwen 3.5 generation, prompt cache and LoRA training steps. For chat and training, see @celticopetit/node-mlx-lm.",
   "main": "index.js",
   "license": "MIT",
   "author": "Cel Ticó Petit",

@@ -161,6 +161,14 @@ std::pair<float, int> Lora::step(const array& tokens, int offset, int length,
   };
   auto [values, grads] = mx::value_and_grad(fn, argnums)(current);
   assign(current);
+  // The gradients first, before the optimizer state and the weights change: if the GPU aborts this
+  // (macOS stops long GPU work while the screen needs it, «Impacting Interactivity»), nothing has
+  // changed and the same step can simply run again.
+  {
+    std::vector<array> pending = grads;
+    pending.insert(pending.end(), values.begin(), values.end());
+    mx::eval(pending);
+  }
 
   // mlx.optimizers.Adam (bias_correction=False). 1 - beta is computed in
   // double, as Python does, so the update is bit-identical.

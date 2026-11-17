@@ -54,3 +54,28 @@ for (const checkpoint of [false, true]) {
     fs.rmSync(file);
   });
 }
+
+// The loss in chunks (checkpointed, so the vocabulary logits are never all in memory) gives the same steps.
+test('training steps with the loss in chunks match the unchunked ones', { skip }, () => {
+  const ref = JSON.parse(fs.readFileSync(path.join(dir, 'reference_lora.json'), 'utf8'));
+  const run = (lossChunk) => {
+    const e = new NativeModel(dir).engine;
+    e.loraLoad(path.join(dir, 'adapters_init.safetensors'), 20);
+    const losses = ref.steps.map((s) => e.trainStep(Int32Array.from(s.tokens), s.offset, s.length, { learningRate: ref.lr, gradCheckpoint: true, lossChunk }).loss);
+    const file = path.join(os.tmpdir(), `adapters-chunk-${process.pid}-${lossChunk}.safetensors`);
+    e.loraSave(file);
+    const adapters = readSafetensors(file);
+    fs.rmSync(file);
+    return { losses, adapters };
+  };
+  // Chunks of 16 positions: the 33-token reference sequences are split in two. (With chunks of 8 the
+  // GPU picks another matmul kernel for so few rows, and bfloat16 rounding differs by ~1%; real chunks are 256.)
+  const whole = run(0);
+  const chunked = run(16);
+  assert.ok(ref.steps.every((s) => s.tokens.length - 1 > 16), 'the reference sequences are longer than a chunk');
+  assert.deepStrictEqual(chunked.losses, whole.losses);
+  let worst = 0;
+  for (const k of Object.keys(whole.adapters)) worst = Math.max(worst, maxDiff(whole.adapters[k].values, chunked.adapters[k].values));
+  console.log(`losses ${chunked.losses.map((l) => l.toFixed(4)).join(', ')}; max adapter diff chunked vs whole: ${worst}`);
+  assert.ok(worst < 1e-6, `adapters differ by ${worst}`);
+});

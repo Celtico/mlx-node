@@ -97,6 +97,10 @@ class Qwen35 {
   // Forward without cache, as in training (ops path for Gated DeltaNet so it
   // can be differentiated). checkpoint: recompute each layer in backward.
   mx::array forward_train(const mx::array& tokens, bool checkpoint);
+  // forward_train without the output head: the normed hidden states [1, T, hidden].
+  mx::array hidden_train(const mx::array& tokens, bool checkpoint);
+  // The output head: hidden states → logits over the vocabulary.
+  mx::array head(const mx::array& hidden) { return lm_head_(hidden); }
 
   // Linear layers that can take a LoRA adapter, by weight-file path
   // (e.g. "language_model.model.layers.31.mlp.gate_proj"), in layer order.
@@ -132,6 +136,9 @@ class Qwen35 {
 };
 
 // Gated delta rule recurrence (Metal kernel on GPU, ops loop elsewhere).
+// Steps per checkpointed segment of the Gated DeltaNet recurrence in long sequences (training); 0: none.
+void set_delta_segment(int steps);
+
 std::pair<mx::array, mx::array> gated_delta_update(
     const mx::array& q, const mx::array& k, const mx::array& v,
     const mx::array& a, const mx::array& b, const mx::array& A_log,

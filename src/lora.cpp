@@ -1,6 +1,7 @@
 // Port of mlx_lm tuner (lora.py LoRALinear, trainer.py default_loss and the
 // train step) and mlx.optimizers.Adam to the MLX C++ API.
 #include "lora.h"
+#include <algorithm>
 
 #include <cmath>
 #include <stdexcept>
@@ -80,17 +81,34 @@ array Lora::masked_ce(const array& batch, int offset, int length, bool checkpoin
   int T = batch.shape(1) - 1;
   auto inputs = mx::slice(batch, {0, 0}, {1, T});
   auto targets = mx::slice(batch, {0, 1}, {1, T + 1});
-  auto logits = model_.forward_train(inputs, checkpoint);
-
   // nn.losses.cross_entropy (mlx 0.32.4): on the GPU the fused kernel, which
   // accumulates in float32; elsewhere the plain path, in the logits dtype.
-  array ce(0.0f);
-  if (mx::default_device() == mx::Device::gpu) {
-    ce = mx::astype(mx::fast::cross_entropy(logits, targets), logits.dtype());
-  } else {
+  auto cross_entropy = [](array logits, const array& targets) {
+    if (mx::default_device() == mx::Device::gpu)
+      return mx::astype(mx::fast::cross_entropy(logits, targets), logits.dtype());
     logits = mx::subtract(logits, mx::stop_gradient(mx::max(logits, -1, true)));
     auto score = mx::squeeze(mx::take_along_axis(logits, mx::expand_dims(targets, -1), -1), -1);
-    ce = mx::subtract(mx::logsumexp(logits, -1), score);
+    return mx::subtract(mx::logsumexp(logits, -1), score);
+  };
+  array ce(0.0f);
+  if (checkpoint && loss_chunk_ > 0 && T > loss_chunk_) {
+    // Chunked: each chunk's logits are made and dropped inside a checkpoint, so the backward pass
+    // recomputes them chunk by chunk (a 2,048-token example: ~6 GB of logits and gradients → <1 GB).
+    auto hidden = model_.hidden_train(inputs, true);
+    std::vector<array> parts;
+    for (int start = 0; start < T; start += loss_chunk_) {
+      int stop = std::min(T, start + loss_chunk_);
+      auto h = mx::slice(hidden, {0, start, 0}, {1, stop, hidden.shape(2)});
+      // The targets are captured, not inputs: nothing is differentiated with respect to them.
+      auto t = mx::stop_gradient(mx::slice(targets, {0, start}, {1, stop}));
+      auto chunk_ce = mx::checkpoint([this, cross_entropy, t](const std::vector<array>& in) {
+        return std::vector<array>{cross_entropy(model_.head(in[0]), t)};
+      });
+      parts.push_back(chunk_ce({h})[0]);
+    }
+    ce = mx::concatenate(parts, 1);
+  } else {
+    ce = cross_entropy(model_.forward_train(inputs, checkpoint), targets);
   }
 
   auto steps = mx::arange(1, T + 1, mx::int32);

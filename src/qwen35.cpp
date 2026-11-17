@@ -233,6 +233,11 @@ std::vector<array> gated_delta_step(const std::vector<array>& in) {
   return {mx::astype(y, q.dtype()), state};
 }
 
+// Steps per checkpointed segment of the recurrence when it is longer (see gated_delta_ops); 0: none.
+// Off by default: with segments the gradients differ from mlx_lm by ~1% (relative), the same for any
+// segment size, and the cause is not understood yet. trainStep's { deltaSegment } turns it on.
+int kDeltaSegment = 0;
+
 // Ops reference (mlx_lm gated_delta_ops): sequential loop over time.
 std::pair<array, array> gated_delta_ops(array q, array k, const array& v,
                                         const array& g, const array& beta,
@@ -243,21 +248,52 @@ std::pair<array, array> gated_delta_ops(array q, array k, const array& v,
     q = mx::repeat(q, Hv / Hk, -2);
     k = mx::repeat(k, Hv / Hk, -2);
   }
-  std::vector<array> ys;
-  for (int t = 0; t < T; ++t) {
-    auto qt = mx::squeeze(mx::slice(q, {0, t, 0, 0}, {q.shape(0), t + 1, q.shape(2), q.shape(3)}), 1);
-    auto kt = mx::squeeze(mx::slice(k, {0, t, 0, 0}, {k.shape(0), t + 1, k.shape(2), k.shape(3)}), 1);
-    auto vt = mx::squeeze(mx::slice(v, {0, t, 0, 0}, {v.shape(0), t + 1, v.shape(2), v.shape(3)}), 1);
-    auto gt = mx::squeeze(mx::slice(g, {0, t, 0}, {g.shape(0), t + 1, g.shape(2)}), 1);
-    auto bt = mx::squeeze(mx::slice(beta, {0, t, 0}, {beta.shape(0), t + 1, beta.shape(2)}), 1);
-    auto out = step({qt, kt, vt, gt, bt, state});
-    ys.push_back(out[0]);
+  // Steps [from, to) of the recurrence from `state`: (outputs [B, to-from, H, Dv], last state).
+  auto run = [](const array& q, const array& k, const array& v, const array& g, const array& beta,
+                array state, int from, int to) {
+    std::vector<array> ys;
+    for (int t = from; t < to; ++t) {
+      auto qt = mx::squeeze(mx::slice(q, {0, t, 0, 0}, {q.shape(0), t + 1, q.shape(2), q.shape(3)}), 1);
+      auto kt = mx::squeeze(mx::slice(k, {0, t, 0, 0}, {k.shape(0), t + 1, k.shape(2), k.shape(3)}), 1);
+      auto vt = mx::squeeze(mx::slice(v, {0, t, 0, 0}, {v.shape(0), t + 1, v.shape(2), v.shape(3)}), 1);
+      auto gt = mx::squeeze(mx::slice(g, {0, t, 0}, {g.shape(0), t + 1, g.shape(2)}), 1);
+      auto bt = mx::squeeze(mx::slice(beta, {0, t, 0}, {beta.shape(0), t + 1, beta.shape(2)}), 1);
+      auto out = step({qt, kt, vt, gt, bt, state});
+      ys.push_back(out[0]);
+      state = out[1];
+    }
+    return std::make_pair(mx::stack(ys, 1), state);
+  };
+  if (kDeltaSegment <= 0 || T <= kDeltaSegment) return run(q, k, v, g, beta, state, 0, T);
+  // Longer sequences (training): the steps go in checkpointed segments, so the backward pass keeps only
+  // the state between segments and recomputes one segment at a time. Every step keeps several copies of
+  // the [H, Dv, Dk] state (2 MB for Qwen 3.5 9B) for its gradients: a 512-token example needed ~5 GB per
+  // layer, 4,096 tokens ~40 GB. The arithmetic is the same, so the results are too.
+  std::vector<array> parts;
+  for (int from = 0; from < T; from += kDeltaSegment) {
+    int to = std::min(T, from + kDeltaSegment);
+    auto slice_t = [&](const array& x) {
+      mx::Shape start(x.ndim(), 0);
+      mx::Shape stop = x.shape();
+      start[1] = from;
+      stop[1] = to;
+      return mx::slice(x, start, stop);
+    };
+    auto segment = mx::checkpoint([run](const std::vector<array>& in) {
+      int n = in[0].shape(1);
+      auto [ys, last] = run(in[0], in[1], in[2], in[3], in[4], in[5], 0, n);
+      return std::vector<array>{ys, last};
+    });
+    auto out = segment({slice_t(q), slice_t(k), slice_t(v), slice_t(g), slice_t(beta), state});
+    parts.push_back(out[0]);
     state = out[1];
   }
-  return {mx::stack(ys, 1), state};
+  return {mx::concatenate(parts, 1), state};
 }
 
 }  // namespace
+
+void set_delta_segment(int steps) { kDeltaSegment = steps; }
 
 std::pair<array, array> gated_delta_update(
     const array& q, const array& k, const array& v, const array& a,
@@ -521,6 +557,10 @@ array Qwen35::forward(const array& tokens) {
 }
 
 array Qwen35::forward_train(const array& tokens, bool checkpoint) {
+  return lm_head_(hidden_train(tokens, checkpoint));
+}
+
+array Qwen35::hidden_train(const array& tokens, bool checkpoint) {
   auto h = embed(tokens);
   for (size_t i = 0; i < layers_.size(); ++i) {
     auto& l = layers_[i];
@@ -552,8 +592,7 @@ array Qwen35::forward_train(const array& tokens, bool checkpoint) {
     });
     h = fn(inputs)[0];
   }
-  h = mx::fast::rms_norm(h, final_norm_, cfg_.rms_norm_eps);
-  return lm_head_(h);
+  return mx::fast::rms_norm(h, final_norm_, cfg_.rms_norm_eps);
 }
 
 std::vector<std::pair<std::string, Linear*>> Qwen35::lora_targets(

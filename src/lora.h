@@ -44,6 +44,10 @@ class Lora {
   // One training step: gradients + Adam update. Returns (loss, tokens).
   std::pair<float, int> step(const mx::array& tokens, int offset, int length,
                              float learning_rate, bool checkpoint);
+  // With checkpointing, the cross entropy is computed over this many positions at a time, each chunk
+  // recomputed in the backward pass: the logits over the whole vocabulary (248,320 for Qwen 3.5) are never
+  // all in memory. 0 turns it off.
+  void set_loss_chunk(int positions) { loss_chunk_ = positions; }
 
  private:
   std::vector<mx::array> params() const;
@@ -55,6 +59,7 @@ class Lora {
   std::vector<std::pair<std::string, Linear*>> targets_;
   std::vector<mx::array> m_, v_;
   AdamOptions adam_;
+  int loss_chunk_ = 256;
 };
 
 }  // namespace mlxnode

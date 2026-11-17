@@ -16,7 +16,7 @@
 //   engine.loraLoad(adaptersFile, scale)   // e.g. a beta's adapters.safetensors
 //   engine.loraSave(adaptersFile)
 //   engine.loraRemove()
-//   engine.trainStep(Int32Array tokens, offset, length, { learningRate, gradCheckpoint })
+//   engine.trainStep(Int32Array tokens, offset, length, { learningRate, gradCheckpoint, lossChunk })
 //                            -> { loss, tokens }
 //   engine.loraLoss(Int32Array tokens, offset, length) -> { loss, tokens }
 //
@@ -429,6 +429,8 @@ class Engine : public Napi::ObjectWrap<Engine> {
         auto o = info[3].As<Napi::Object>();
         lr = get_float(o, "learningRate", lr);
         ckpt = o.Get("gradCheckpoint").ToBoolean();
+        if (o.Has("lossChunk")) lora().set_loss_chunk(o.Get("lossChunk").As<Napi::Number>().Int32Value());
+        if (o.Has("deltaSegment")) set_delta_segment(o.Get("deltaSegment").As<Napi::Number>().Int32Value());
       }
       weights_changed();
       auto r = lora().step(to_tokens(info[0]), info[1].As<Napi::Number>().Int32Value(),
@@ -451,6 +453,8 @@ class Engine : public Napi::ObjectWrap<Engine> {
     return guard(info, [&]() -> Napi::Value {
       model().reset();
       live_ok_ = false;
+      if (info.Length() > 5 && info[5].IsNumber()) lora().set_loss_chunk(info[5].As<Napi::Number>().Int32Value());
+      if (info.Length() > 6 && info[6].IsNumber()) set_delta_segment(info[6].As<Napi::Number>().Int32Value());
       auto g = lora().gradients(to_tokens(info[0]), info[1].As<Napi::Number>().Int32Value(),
                                 info[2].As<Napi::Number>().Int32Value(), info[4].ToBoolean());
       mx::save_safetensors(info[3].As<Napi::String>().Utf8Value(), g);
